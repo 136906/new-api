@@ -154,7 +154,7 @@ func main() {
 		Domain:   ".velvenode.top",  // 新增这一行
 		MaxAge:   2592000, // 30 days
 		HttpOnly: true,
-		Secure:   true,              // 改成 true（因为用 HTTPS）
+		Secure:   false,              // 改成 true（因为用 HTTPS）
 		SameSite: http.SameSiteLaxMode,  // 改成 Lax（跨子域名需要）
 	})
 	server.Use(sessions.Sessions("session", store))
