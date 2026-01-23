@@ -151,10 +151,11 @@ func main() {
 	store := cookie.NewStore([]byte(common.SessionSecret))
 	store.Options(sessions.Options{
 		Path:     "/",
+		Domain:   ".velvenode.top",  // 新增这一行
 		MaxAge:   2592000, // 30 days
 		HttpOnly: true,
-		Secure:   false,
-		SameSite: http.SameSiteStrictMode,
+		Secure:   true,              // 改成 true（因为用 HTTPS）
+		SameSite: http.SameSiteLaxMode,  // 改成 Lax（跨子域名需要）
 	})
 	server.Use(sessions.Sessions("session", store))
 
