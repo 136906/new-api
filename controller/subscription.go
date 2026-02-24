@@ -395,16 +395,16 @@ func PurchaseSubscriptionWithBalance(c *gin.Context) {
 		return
 	}
 
-	need := plan.TotalAmount
+	need := plan.TotalAmount // int64
 	if need < 0 {
 		need = 0
 	}
-	if user.Quota < need {
+	if int64(user.Quota) < need {
 		common.ApiErrorMsg(c, "insufficient balance")
 		return
 	}
 
-	if err := model.DecreaseUserQuota(userId, need); err != nil {
+	if err := model.DecreaseUserQuota(userId, int(need)); err != nil {
 		common.ApiErrorMsg(c, "balance deduction failed")
 		return
 	}
