@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"net/http"
 	"strconv"
 	"strings"
 
@@ -12,7 +13,6 @@ import (
 )
 
 // ---- Shared types ----
-
 type SubscriptionPlanDTO struct {
 	Plan model.SubscriptionPlan `json:"plan"`
 }
@@ -22,7 +22,6 @@ type BillingPreferenceRequest struct {
 }
 
 // ---- User APIs ----
-
 func GetSubscriptionPlans(c *gin.Context) {
 	var plans []model.SubscriptionPlan
 	if err := model.DB.Where("enabled = ?", true).Order("sort_order desc, id desc").Find(&plans).Error; err != nil {
@@ -70,7 +69,6 @@ func UpdateSubscriptionPreference(c *gin.Context) {
 		return
 	}
 	pref := common.NormalizeBillingPreference(req.BillingPreference)
-
 	user, err := model.GetUserById(userId, true)
 	if err != nil {
 		common.ApiError(c, err)
@@ -87,7 +85,6 @@ func UpdateSubscriptionPreference(c *gin.Context) {
 }
 
 // ---- Admin APIs ----
-
 func AdminListSubscriptionPlans(c *gin.Context) {
 	var plans []model.SubscriptionPlan
 	if err := model.DB.Order("sort_order desc, id desc").Find(&plans).Error; err != nil {
@@ -219,27 +216,26 @@ func AdminUpdateSubscriptionPlan(c *gin.Context) {
 		common.ApiErrorMsg(c, "自定义重置周期需大于0秒")
 		return
 	}
-
 	err := model.DB.Transaction(func(tx *gorm.DB) error {
 		// update plan (allow zero values updates with map)
 		updateMap := map[string]interface{}{
-			"title":                      req.Plan.Title,
-			"subtitle":                   req.Plan.Subtitle,
-			"price_amount":               req.Plan.PriceAmount,
-			"currency":                   req.Plan.Currency,
-			"duration_unit":              req.Plan.DurationUnit,
-			"duration_value":             req.Plan.DurationValue,
-			"custom_seconds":             req.Plan.CustomSeconds,
-			"enabled":                    req.Plan.Enabled,
-			"sort_order":                 req.Plan.SortOrder,
-			"stripe_price_id":            req.Plan.StripePriceId,
-			"creem_product_id":           req.Plan.CreemProductId,
-			"max_purchase_per_user":      req.Plan.MaxPurchasePerUser,
-			"total_amount":               req.Plan.TotalAmount,
-			"upgrade_group":              req.Plan.UpgradeGroup,
-			"quota_reset_period":         req.Plan.QuotaResetPeriod,
+			"title":                     req.Plan.Title,
+			"subtitle":                  req.Plan.Subtitle,
+			"price_amount":              req.Plan.PriceAmount,
+			"currency":                  req.Plan.Currency,
+			"duration_unit":             req.Plan.DurationUnit,
+			"duration_value":            req.Plan.DurationValue,
+			"custom_seconds":            req.Plan.CustomSeconds,
+			"enabled":                   req.Plan.Enabled,
+			"sort_order":                req.Plan.SortOrder,
+			"stripe_price_id":           req.Plan.StripePriceId,
+			"creem_product_id":          req.Plan.CreemProductId,
+			"max_purchase_per_user":     req.Plan.MaxPurchasePerUser,
+			"total_amount":              req.Plan.TotalAmount,
+			"upgrade_group":             req.Plan.UpgradeGroup,
+			"quota_reset_period":        req.Plan.QuotaResetPeriod,
 			"quota_reset_custom_seconds": req.Plan.QuotaResetCustomSeconds,
-			"updated_at":                 common.GetTimestamp(),
+			"updated_at":                common.GetTimestamp(),
 		}
 		if err := tx.Model(&model.SubscriptionPlan{}).Where("id = ?", id).Updates(updateMap).Error; err != nil {
 			return err
@@ -301,7 +297,6 @@ func AdminBindSubscription(c *gin.Context) {
 }
 
 // ---- Admin: user subscription management ----
-
 func AdminListUserSubscriptions(c *gin.Context) {
 	userId, _ := strconv.Atoi(c.Param("id"))
 	if userId <= 0 {
@@ -380,4 +375,46 @@ func AdminDeleteUserSubscription(c *gin.Context) {
 		return
 	}
 	common.ApiSuccess(c, nil)
+}
+
+// POST /api/subscription/self/purchase
+func PurchaseSubscriptionWithBalance(c *gin.Context) {
+	userId := c.GetInt("id")
+	var req struct {
+		PlanID int `json:"plan_id"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil || req.PlanID == 0 {
+		common.AbortWithMessage(c, "invalid plan_id", http.StatusBadRequest)
+		return
+	}
+
+	plan, err := model.GetSubscriptionPlanById(req.PlanID)
+	if err != nil || plan == nil || !plan.Enabled {
+		common.AbortWithMessage(c, "plan not found or disabled", http.StatusBadRequest)
+		return
+	}
+
+	user, err := model.GetUserById(userId, true)
+	if err != nil || user == nil {
+		common.AbortWithMessage(c, "user not found", http.StatusBadRequest)
+		return
+	}
+
+	// plan.Amount 为订阅总额度（单位：quota）
+	if user.Quota < plan.Amount {
+		common.AbortWithMessage(c, "insufficient balance", http.StatusBadRequest)
+		return
+	}
+
+	if err := model.DecreaseUserQuota(userId, plan.Amount, true); err != nil {
+		common.AbortWithMessage(c, "balance deduction failed", http.StatusBadRequest)
+		return
+	}
+
+	if err := model.AdminCreateUserSubscription(userId, plan.ID); err != nil {
+		common.AbortWithMessage(c, "create subscription failed", http.StatusBadRequest)
+		return
+	}
+
+	common.ApiSuccess(c, gin.H{"success": true})
 }
