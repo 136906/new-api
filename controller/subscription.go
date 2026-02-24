@@ -1,7 +1,6 @@
 package controller
 
 import (
-	"net/http"
 	"strconv"
 	"strings"
 
@@ -217,7 +216,6 @@ func AdminUpdateSubscriptionPlan(c *gin.Context) {
 		return
 	}
 	err := model.DB.Transaction(func(tx *gorm.DB) error {
-		// update plan (allow zero values updates with map)
 		updateMap := map[string]interface{}{
 			"title":                     req.Plan.Title,
 			"subtitle":                  req.Plan.Subtitle,
@@ -315,7 +313,6 @@ type AdminCreateUserSubscriptionRequest struct {
 	PlanId int `json:"plan_id"`
 }
 
-// AdminCreateUserSubscription creates a new user subscription from a plan (no payment).
 func AdminCreateUserSubscription(c *gin.Context) {
 	userId, _ := strconv.Atoi(c.Param("id"))
 	if userId <= 0 {
@@ -339,7 +336,6 @@ func AdminCreateUserSubscription(c *gin.Context) {
 	common.ApiSuccess(c, nil)
 }
 
-// AdminInvalidateUserSubscription cancels a user subscription immediately.
 func AdminInvalidateUserSubscription(c *gin.Context) {
 	subId, _ := strconv.Atoi(c.Param("id"))
 	if subId <= 0 {
@@ -358,7 +354,6 @@ func AdminInvalidateUserSubscription(c *gin.Context) {
 	common.ApiSuccess(c, nil)
 }
 
-// AdminDeleteUserSubscription hard-deletes a user subscription.
 func AdminDeleteUserSubscription(c *gin.Context) {
 	subId, _ := strconv.Atoi(c.Param("id"))
 	if subId <= 0 {
@@ -384,35 +379,43 @@ func PurchaseSubscriptionWithBalance(c *gin.Context) {
 		PlanID int `json:"plan_id"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil || req.PlanID == 0 {
-		common.AbortWithMessage(c, "invalid plan_id", http.StatusBadRequest)
+		common.ApiErrorMsg(c, "invalid plan_id")
 		return
 	}
 
 	plan, err := model.GetSubscriptionPlanById(req.PlanID)
 	if err != nil || plan == nil || !plan.Enabled {
-		common.AbortWithMessage(c, "plan not found or disabled", http.StatusBadRequest)
+		common.ApiErrorMsg(c, "plan not found or disabled")
 		return
 	}
 
 	user, err := model.GetUserById(userId, true)
 	if err != nil || user == nil {
-		common.AbortWithMessage(c, "user not found", http.StatusBadRequest)
+		common.ApiErrorMsg(c, "user not found")
 		return
 	}
 
-	// plan.Amount 为订阅总额度（单位：quota）
-	if user.Quota < plan.Amount {
-		common.AbortWithMessage(c, "insufficient balance", http.StatusBadRequest)
+	need := plan.TotalAmount
+	if need < 0 {
+		need = 0
+	}
+	if user.Quota < need {
+		common.ApiErrorMsg(c, "insufficient balance")
 		return
 	}
 
-	if err := model.DecreaseUserQuota(userId, plan.Amount, true); err != nil {
-		common.AbortWithMessage(c, "balance deduction failed", http.StatusBadRequest)
+	if err := model.DecreaseUserQuota(userId, need); err != nil {
+		common.ApiErrorMsg(c, "balance deduction failed")
 		return
 	}
 
-	if err := model.AdminCreateUserSubscription(userId, plan.ID); err != nil {
-		common.AbortWithMessage(c, "create subscription failed", http.StatusBadRequest)
+	msg, err := model.AdminBindSubscription(userId, plan.Id, "")
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	if msg != "" {
+		common.ApiSuccess(c, gin.H{"message": msg})
 		return
 	}
 
