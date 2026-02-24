@@ -28,10 +28,10 @@ import {
   Divider,
   Tooltip,
 } from '@douyinfe/semi-ui';
-import { Crown, CalendarClock, Package } from 'lucide-react';
+import { Crown, CalendarClock, Package, Wallet } from 'lucide-react';
 import { SiStripe } from 'react-icons/si';
 import { IconCreditCard } from '@douyinfe/semi-icons';
-import { renderQuota } from '../../../helpers';
+import { API, showError, showSuccess, renderQuota } from '../../../helpers';
 import { getCurrencyConfig } from '../../../helpers/render';
 import {
   formatSubscriptionDuration,
@@ -56,6 +56,7 @@ const SubscriptionPurchaseModal = ({
   onPayStripe,
   onPayCreem,
   onPayEpay,
+  onSuccess,
 }) => {
   const plan = selectedPlan?.plan;
   const totalAmount = Number(plan?.total_amount || 0);
@@ -65,15 +66,33 @@ const SubscriptionPurchaseModal = ({
   const displayPrice = convertedPrice.toFixed(
     Number.isInteger(convertedPrice) ? 0 : 2,
   );
+
   // 只有当管理员开启支付网关 AND 套餐配置了对应的支付ID时才显示
   const hasStripe = enableStripeTopUp && !!plan?.stripe_price_id;
   const hasCreem = enableCreemTopUp && !!plan?.creem_product_id;
   const hasEpay = enableOnlineTopUp && epayMethods.length > 0;
   const hasAnyPayment = hasStripe || hasCreem || hasEpay;
+
   const purchaseLimit = Number(purchaseLimitInfo?.limit || 0);
   const purchaseCount = Number(purchaseLimitInfo?.count || 0);
-  const purchaseLimitReached =
-    purchaseLimit > 0 && purchaseCount >= purchaseLimit;
+  const purchaseLimitReached = purchaseLimit > 0 && purchaseCount >= purchaseLimit;
+
+  const handleBalancePurchase = async () => {
+    if (!plan?.id) return;
+    try {
+      const res = await API.post('/api/subscription/self/purchase', {
+        plan_id: plan.id,
+      });
+      if (res.data?.success) {
+        showSuccess(t('购买成功'));
+        onSuccess?.();
+      } else {
+        showError(res.data?.message || t('购买失败'));
+      }
+    } catch (e) {
+      showError(t('购买失败'));
+    }
+  };
 
   return (
     <Modal
@@ -106,6 +125,7 @@ const SubscriptionPurchaseModal = ({
                   {plan.title}
                 </Typography.Text>
               </div>
+
               <div className='flex justify-between items-center'>
                 <Text strong className='text-slate-700 dark:text-slate-200'>
                   {t('有效期')}：
@@ -117,6 +137,7 @@ const SubscriptionPurchaseModal = ({
                   </Text>
                 </div>
               </div>
+
               {formatSubscriptionResetPeriod(plan, t) !== t('不重置') && (
                 <div className='flex justify-between items-center'>
                   <Text strong className='text-slate-700 dark:text-slate-200'>
@@ -127,6 +148,7 @@ const SubscriptionPurchaseModal = ({
                   </Text>
                 </div>
               )}
+
               <div className='flex justify-between items-center'>
                 <Text strong className='text-slate-700 dark:text-slate-200'>
                   {t('总额度')}：
@@ -146,6 +168,7 @@ const SubscriptionPurchaseModal = ({
                   )}
                 </div>
               </div>
+
               {plan?.upgrade_group ? (
                 <div className='flex justify-between items-center'>
                   <Text strong className='text-slate-700 dark:text-slate-200'>
@@ -156,14 +179,15 @@ const SubscriptionPurchaseModal = ({
                   </Text>
                 </div>
               ) : null}
+
               <Divider margin={8} />
+
               <div className='flex justify-between items-center'>
                 <Text strong className='text-slate-700 dark:text-slate-200'>
                   {t('应付金额')}：
                 </Text>
                 <Text strong className='text-xl text-purple-600'>
-                  {symbol}
-                  {displayPrice}
+                  {symbol} {displayPrice}
                 </Text>
               </div>
             </div>
@@ -243,12 +267,26 @@ const SubscriptionPurchaseModal = ({
               )}
             </div>
           ) : (
-            <Banner
-              type='info'
-              description={t('管理员未开启在线支付功能，请联系管理员配置。')}
-              className='!rounded-xl'
-              closeIcon={null}
-            />
+            <div className='space-y-3'>
+              <Banner
+                type='info'
+                description={t('管理员未开启在线支付功能，请联系管理员配置。')}
+                className='!rounded-xl'
+                closeIcon={null}
+              />
+              {/* 余额购买按钮 */}
+              <Button
+                theme='solid'
+                type='primary'
+                icon={<Wallet size={14} />}
+                onClick={handleBalancePurchase}
+                loading={paying}
+                disabled={purchaseLimitReached}
+                block
+              >
+                {t('余额购买')}
+              </Button>
+            </div>
           )}
         </div>
       ) : null}
