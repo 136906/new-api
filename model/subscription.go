@@ -797,6 +797,65 @@ func AdminDeleteUserSubscription(userSubscriptionId int) (string, error) {
 	return "", nil
 }
 
+// AdminDeleteSubscriptionPlan deletes a plan. If purge=true, it also removes related user subscriptions
+// and refunds remaining quota to users (based on AmountTotal - AmountUsed).
+func AdminDeleteSubscriptionPlan(planId int, purge bool) (string, error) {
+	if planId <= 0 {
+		return "", errors.New("invalid planId")
+	}
+
+	returnMsg := ""
+	err := DB.Transaction(func(tx *gorm.DB) error {
+		// lock plan
+		var plan SubscriptionPlan
+		if err := tx.Set("gorm:query_option", "FOR UPDATE").Where("id = ?", planId).First(&plan).Error; err != nil {
+			return err
+		}
+
+		if purge {
+			// lock related subscriptions
+			var subs []UserSubscription
+			if err := tx.Set("gorm:query_option", "FOR UPDATE").Where("plan_id = ?", planId).Find(&subs).Error; err != nil {
+				return err
+			}
+
+			// refund remaining quota per subscription
+			for _, sub := range subs {
+				remain := sub.AmountTotal - sub.AmountUsed
+				if remain < 0 {
+					remain = 0
+				}
+				if remain > 0 {
+					// update user quota in DB directly within tx
+					if err := tx.Model(&User{}).Where("id = ?", sub.UserId).Update("quota", gorm.Expr("quota + ?", int(remain))).Error; err != nil {
+						return err
+					}
+				}
+				// delete subscription record
+				if err := tx.Where("id = ?", sub.Id).Delete(&UserSubscription{}).Error; err != nil {
+					return err
+				}
+			}
+			returnMsg = "已删除套餐并清理订阅记录（余额已退回）"
+		} else {
+			// keep subscription history, only delete plan
+			returnMsg = "已删除套餐（历史订阅保留）"
+		}
+
+		// delete plan
+		if err := tx.Where("id = ?", planId).Delete(&SubscriptionPlan{}).Error; err != nil {
+			return err
+		}
+
+		return nil
+	})
+	if err != nil {
+		return "", err
+	}
+	InvalidateSubscriptionPlanCache(planId)
+	return returnMsg, nil
+}
+
 type SubscriptionPreConsumeResult struct {
 	UserSubscriptionId int
 	PreConsumed        int64

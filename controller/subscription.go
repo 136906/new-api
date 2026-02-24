@@ -372,6 +372,28 @@ func AdminDeleteUserSubscription(c *gin.Context) {
 	common.ApiSuccess(c, nil)
 }
 
+// DELETE /api/subscription/admin/plans/:id?purge=1
+func AdminDeleteSubscriptionPlan(c *gin.Context) {
+	planId, _ := strconv.Atoi(c.Param("id"))
+	if planId <= 0 {
+		common.ApiErrorMsg(c, "无效的ID")
+		return
+	}
+
+	purge := c.DefaultQuery("purge", "0") == "1"
+
+	msg, err := model.AdminDeleteSubscriptionPlan(planId, purge)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	if msg != "" {
+		common.ApiSuccess(c, gin.H{"message": msg})
+		return
+	}
+	common.ApiSuccess(c, nil)
+}
+
 // POST /api/subscription/self/purchase
 func PurchaseSubscriptionWithBalance(c *gin.Context) {
 	userId := c.GetInt("id")

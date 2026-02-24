@@ -228,7 +228,11 @@ const renderPaymentConfig = (text, record, t, enableEpay) => {
   );
 };
 
-const renderOperations = (text, record, { openEdit, setPlanEnabled, t }) => {
+const renderOperations = (
+  text,
+  record,
+  { openEdit, setPlanEnabled, deletePlan, t },
+) => {
   const isEnabled = record?.plan?.enabled;
 
   const handleToggle = () => {
@@ -247,6 +251,26 @@ const renderOperations = (text, record, { openEdit, setPlanEnabled, t }) => {
         onOk: () => setPlanEnabled(record, true),
       });
     }
+  };
+
+  const handleDelete = () => {
+    Modal.confirm({
+      title: t('删除套餐'),
+      content: (
+        <div>
+          <div>{t('请选择删除方式：')}</div>
+          <div style={{ marginTop: 8 }}>
+            1) {t('保留历史订阅（不影响已购用户）')}
+          </div>
+          <div>2) {t('清除历史订阅并自动退余额')}</div>
+        </div>
+      ),
+      centered: true,
+      okText: t('保留历史订阅'),
+      cancelText: t('清除并退款'),
+      onOk: () => deletePlan(record, false),
+      onCancel: () => deletePlan(record, true),
+    });
   };
 
   return (
@@ -273,6 +297,9 @@ const renderOperations = (text, record, { openEdit, setPlanEnabled, t }) => {
           {t('启用')}
         </Button>
       )}
+      <Button theme='light' type='danger' size='small' onClick={handleDelete}>
+        {t('删除')}
+      </Button>
     </Space>
   );
 };
@@ -281,6 +308,7 @@ export const getSubscriptionsColumns = ({
   t,
   openEdit,
   setPlanEnabled,
+  deletePlan,
   enableEpay,
 }) => {
   return [
@@ -351,7 +379,7 @@ export const getSubscriptionsColumns = ({
       fixed: 'right',
       width: 160,
       render: (text, record) =>
-        renderOperations(text, record, { openEdit, setPlanEnabled, t }),
+        renderOperations(text, record, { openEdit, setPlanEnabled, deletePlan, t }),
     },
   ];
 };

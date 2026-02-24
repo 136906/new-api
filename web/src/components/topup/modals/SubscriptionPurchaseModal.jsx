@@ -268,12 +268,6 @@ const SubscriptionPurchaseModal = ({
             </div>
           ) : (
             <div className='space-y-3'>
-              <Banner
-                type='info'
-                description={t('管理员未开启在线支付功能，请联系管理员配置。')}
-                className='!rounded-xl'
-                closeIcon={null}
-              />
               {/* 余额购买按钮 */}
               <Button
                 theme='solid'
